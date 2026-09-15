@@ -39,7 +39,12 @@ async fn main() {
                 }
             };
 
-            match send_request(&client, &key, prompt).await {
+            let messages = vec![Message {
+                role: String::from("user"),
+                content: prompt,
+            }];
+
+            match send_request(&client, &key, messages).await {
                 Ok(response) => println!("Response: {}", response),
                 Err(error) => println!("Error: {}", error),
             }
@@ -51,16 +56,11 @@ async fn main() {
 async fn send_request(
     client: &reqwest::Client,
     api_key: &str,
-    prompt: String,
+    messages: Vec<Message>,
 ) -> Result<String, String> {
-    let message = Message {
-        role: String::from("user"),
-        content: prompt,
-    };
-
     let request = ModelRequest {
         model: String::from("openai/gpt-oss-20b"),
-        messages: vec![message],
+        messages,
     };
 
     let response = client
