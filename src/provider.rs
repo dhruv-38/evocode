@@ -1,0 +1,56 @@
+use serde::{Deserialize, Serialize};
+
+use crate::message::Message;
+
+#[derive(Serialize)]
+struct ModelRequest {
+    model: String,
+    messages: Vec<Message>,
+}
+
+#[derive(Deserialize)]
+struct ModelResponse {
+    choices: Vec<Choice>,
+}
+
+#[derive(Deserialize)]
+struct Choice {
+    message: Message,
+}
+
+pub(crate) async fn send_request(
+    client: &reqwest::Client,
+    api_key: &str,
+    messages: Vec<Message>,
+) -> Result<String, String> {
+    let request = ModelRequest {
+        model: String::from("openai/gpt-oss-20b"),
+        messages,
+    };
+
+    let response = client
+        .post("https://api.groq.com/openai/v1/chat/completions")
+        .bearer_auth(api_key)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|error| format!("Request failed: {error}"))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("Could not read response body: {error}"))?;
+    if !status.is_success() {
+        return Err(format!("Groq returned {status}: {body}"));
+    }
+
+    let parsed = serde_json::from_str::<ModelResponse>(&body)
+        .map_err(|error| format!("Could not parse response body: {error}"))?;
+    let choice = parsed
+        .choices
+        .first()
+        .ok_or_else(|| String::from("The model returned no choices"))?;
+
+    Ok(choice.message.content.clone())
+}
