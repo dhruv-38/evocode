@@ -2,6 +2,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::message::Message;
 
+const GROQ_ENDPOINT: &str = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL: &str = "openai/gpt-oss-20b";
+
+pub(crate) trait ModelProvider {
+    async fn send(&self, messages: &[Message]) -> Result<Message, String>;
+}
+
+pub(crate) struct GroqProvider {
+    client: reqwest::Client,
+    api_key: String,
+}
+
+impl GroqProvider {
+    pub(crate) fn new(api_key: String) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            api_key,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct ModelRequest<'a> {
     model: &'a str,
@@ -18,34 +39,33 @@ struct Choice {
     message: Message,
 }
 
-pub(crate) async fn send_request(
-    client: &reqwest::Client,
-    api_key: &str,
-    messages: &[Message],
-) -> Result<Message, String> {
-    let request = ModelRequest {
-        model: "openai/gpt-oss-20b",
-        messages,
-    };
+impl ModelProvider for GroqProvider {
+    async fn send(&self, messages: &[Message]) -> Result<Message, String> {
+        let request = ModelRequest {
+            model: MODEL,
+            messages,
+        };
 
-    let response = client
-        .post("https://api.groq.com/openai/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&request)
-        .send()
-        .await
-        .map_err(|error| format!("Request failed: {error}"))?;
+        let response = self
+            .client
+            .post(GROQ_ENDPOINT)
+            .bearer_auth(&self.api_key)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| format!("Request failed: {error}"))?;
 
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format!("Could not read response body: {error}"))?;
-    if !status.is_success() {
-        return Err(format!("Groq returned {status}: {body}"));
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| format!("Could not read response body: {error}"))?;
+        if !status.is_success() {
+            return Err(format!("Groq returned {status}: {body}"));
+        }
+
+        parse_response(&body)
     }
-
-    parse_response(&body)
 }
 
 fn parse_response(body: &str) -> Result<Message, String> {

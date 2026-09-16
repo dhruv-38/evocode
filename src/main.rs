@@ -4,13 +4,13 @@ mod message;
 mod provider;
 
 use message::initial_messages;
-use provider::send_request;
+use provider::{GroqProvider, ModelProvider};
 
 #[tokio::main]
 async fn main() {
     match env::var("GROQ_API_KEY") {
         Ok(key) => {
-            let client = reqwest::Client::new();
+            let provider = GroqProvider::new(key);
             let input = env::args().collect::<Vec<String>>();
 
             let prompt = match input.get(1) {
@@ -23,7 +23,7 @@ async fn main() {
 
             let mut messages = initial_messages(prompt);
 
-            match send_request(&client, &key, &messages).await {
+            match provider.send(&messages).await {
                 Ok(response) => {
                     println!("Response: {}", response.content);
                     messages.push(response);
