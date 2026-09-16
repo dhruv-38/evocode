@@ -5,7 +5,10 @@ pub(crate) async fn run_turn<P: ModelProvider>(
     messages: &mut Vec<Message>,
 ) -> Result<String, String> {
     let response = provider.send(messages).await?;
-    let content = response.content.clone();
+    let content = response
+        .content
+        .clone()
+        .ok_or_else(|| String::from("The model response did not contain text"))?;
     messages.push(response);
 
     Ok(content)
@@ -24,10 +27,7 @@ mod tests {
         async fn send(&self, messages: &[Message]) -> Result<Message, String> {
             assert_eq!(messages.len(), 2);
 
-            Ok(Message {
-                role: String::from("assistant"),
-                content: String::from("fake response"),
-            })
+            Ok(Message::text("assistant", String::from("fake response")))
         }
     }
 
@@ -49,7 +49,7 @@ mod tests {
         assert_eq!(response, "fake response");
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[2].role, "assistant");
-        assert_eq!(messages[2].content, "fake response");
+        assert_eq!(messages[2].content.as_deref(), Some("fake response"));
     }
 
     #[tokio::test]

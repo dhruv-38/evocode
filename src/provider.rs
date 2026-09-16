@@ -100,7 +100,8 @@ mod tests {
         let message = parse_response(body).expect("response should parse");
 
         assert_eq!(message.role, "assistant");
-        assert_eq!(message.content, "hello");
+        assert_eq!(message.content.as_deref(), Some("hello"));
+        assert!(message.tool_calls.is_empty());
     }
 
     #[test]
@@ -108,5 +109,38 @@ mod tests {
         let error = parse_response(r#"{"choices": []}"#).expect_err("response should fail");
 
         assert_eq!(error, "The model returned no choices");
+    }
+
+    #[test]
+    fn parses_tool_call_from_response() {
+        let body = r#"{
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [
+                            {
+                                "id": "call_123",
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "arguments": "{\"command\":\"pwd\"}"
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }"#;
+
+        let message = parse_response(body).expect("response should parse");
+        let tool_call = message.tool_calls.first().expect("tool call should exist");
+
+        assert!(message.content.is_none());
+        assert_eq!(tool_call.id, "call_123");
+        assert_eq!(tool_call.kind, "function");
+        assert_eq!(tool_call.function.name, "bash");
+        assert_eq!(tool_call.function.arguments, r#"{"command":"pwd"}"#);
     }
 }
