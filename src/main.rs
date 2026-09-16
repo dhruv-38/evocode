@@ -1,10 +1,12 @@
 use std::env;
 
+mod agent;
 mod message;
 mod provider;
 
+use agent::run_turn;
 use message::initial_messages;
-use provider::{GroqProvider, ModelProvider};
+use provider::GroqProvider;
 
 #[tokio::main]
 async fn main() {
@@ -23,11 +25,8 @@ async fn main() {
 
             let mut messages = initial_messages(prompt);
 
-            match provider.send(&messages).await {
-                Ok(response) => {
-                    println!("Response: {}", response.content);
-                    messages.push(response);
-                }
+            match run_turn(&provider, &mut messages).await {
+                Ok(response) => println!("Response: {}", response),
                 Err(error) => println!("Error: {}", error),
             }
         }
