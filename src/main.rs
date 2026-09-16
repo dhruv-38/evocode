@@ -3,10 +3,12 @@ use std::env;
 mod agent;
 mod message;
 mod provider;
+mod tool;
 
 use agent::run_turn;
 use message::initial_messages;
 use provider::GroqProvider;
+use tool::default_tools;
 
 #[tokio::main]
 async fn main() {
@@ -24,8 +26,9 @@ async fn main() {
             };
 
             let mut messages = initial_messages(prompt);
+            let tools = default_tools();
 
-            match run_turn(&provider, &mut messages).await {
+            match run_turn(&provider, &mut messages, &tools).await {
                 Ok(response) => println!("Response: {}", response),
                 Err(error) => println!("Error: {}", error),
             }

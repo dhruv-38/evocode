@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::message::Message;
+use crate::{message::Message, tool::ToolDefinition};
 
 const GROQ_ENDPOINT: &str = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL: &str = "openai/gpt-oss-20b";
 
 pub(crate) trait ModelProvider {
-    async fn send(&self, messages: &[Message]) -> Result<Message, String>;
+    async fn send(&self, messages: &[Message], tools: &[ToolDefinition])
+    -> Result<Message, String>;
 }
 
 pub(crate) struct GroqProvider {
@@ -27,6 +28,7 @@ impl GroqProvider {
 struct ModelRequest<'a> {
     model: &'a str,
     messages: &'a [Message],
+    tools: &'a [ToolDefinition],
 }
 
 #[derive(Deserialize)]
@@ -40,10 +42,15 @@ struct Choice {
 }
 
 impl ModelProvider for GroqProvider {
-    async fn send(&self, messages: &[Message]) -> Result<Message, String> {
+    async fn send(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<Message, String> {
         let request = ModelRequest {
             model: MODEL,
             messages,
+            tools,
         };
 
         let response = self

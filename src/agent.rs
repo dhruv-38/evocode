@@ -1,10 +1,11 @@
-use crate::{message::Message, provider::ModelProvider};
+use crate::{message::Message, provider::ModelProvider, tool::ToolDefinition};
 
 pub(crate) async fn run_turn<P: ModelProvider>(
     provider: &P,
     messages: &mut Vec<Message>,
+    tools: &[ToolDefinition],
 ) -> Result<String, String> {
-    let response = provider.send(messages).await?;
+    let response = provider.send(messages, tools).await?;
     let content = response
         .content
         .clone()
@@ -17,22 +18,32 @@ pub(crate) async fn run_turn<P: ModelProvider>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::initial_messages;
+    use crate::{message::initial_messages, tool::default_tools};
 
     struct FakeProvider;
 
     struct FailingProvider;
 
     impl ModelProvider for FakeProvider {
-        async fn send(&self, messages: &[Message]) -> Result<Message, String> {
+        async fn send(
+            &self,
+            messages: &[Message],
+            tools: &[ToolDefinition],
+        ) -> Result<Message, String> {
             assert_eq!(messages.len(), 2);
+            assert_eq!(tools.len(), 1);
+            assert_eq!(tools[0].function.name, "bash");
 
             Ok(Message::text("assistant", String::from("fake response")))
         }
     }
 
     impl ModelProvider for FailingProvider {
-        async fn send(&self, _messages: &[Message]) -> Result<Message, String> {
+        async fn send(
+            &self,
+            _messages: &[Message],
+            _tools: &[ToolDefinition],
+        ) -> Result<Message, String> {
             Err(String::from("provider failed"))
         }
     }
@@ -41,8 +52,9 @@ mod tests {
     async fn appends_assistant_response_to_history() {
         let provider = FakeProvider;
         let mut messages = initial_messages(String::from("test prompt"));
+        let tools = default_tools();
 
-        let response = run_turn(&provider, &mut messages)
+        let response = run_turn(&provider, &mut messages, &tools)
             .await
             .expect("turn should succeed");
 
@@ -56,8 +68,9 @@ mod tests {
     async fn leaves_history_unchanged_when_provider_fails() {
         let provider = FailingProvider;
         let mut messages = initial_messages(String::from("test prompt"));
+        let tools = default_tools();
 
-        let error = run_turn(&provider, &mut messages)
+        let error = run_turn(&provider, &mut messages, &tools)
             .await
             .expect_err("turn should fail");
 
