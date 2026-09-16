@@ -21,10 +21,13 @@ async fn main() {
                 }
             };
 
-            let messages = initial_messages(prompt);
+            let mut messages = initial_messages(prompt);
 
-            match send_request(&client, &key, messages).await {
-                Ok(response) => println!("Response: {}", response),
+            match send_request(&client, &key, &messages).await {
+                Ok(response) => {
+                    println!("Response: {}", response.content);
+                    messages.push(response);
+                }
                 Err(error) => println!("Error: {}", error),
             }
         }

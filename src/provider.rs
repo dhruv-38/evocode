@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::message::Message;
 
 #[derive(Serialize)]
-struct ModelRequest {
-    model: String,
-    messages: Vec<Message>,
+struct ModelRequest<'a> {
+    model: &'a str,
+    messages: &'a [Message],
 }
 
 #[derive(Deserialize)]
@@ -21,10 +21,10 @@ struct Choice {
 pub(crate) async fn send_request(
     client: &reqwest::Client,
     api_key: &str,
-    messages: Vec<Message>,
-) -> Result<String, String> {
+    messages: &[Message],
+) -> Result<Message, String> {
     let request = ModelRequest {
-        model: String::from("openai/gpt-oss-20b"),
+        model: "openai/gpt-oss-20b",
         messages,
     };
 
@@ -45,12 +45,48 @@ pub(crate) async fn send_request(
         return Err(format!("Groq returned {status}: {body}"));
     }
 
-    let parsed = serde_json::from_str::<ModelResponse>(&body)
+    parse_response(&body)
+}
+
+fn parse_response(body: &str) -> Result<Message, String> {
+    let parsed = serde_json::from_str::<ModelResponse>(body)
         .map_err(|error| format!("Could not parse response body: {error}"))?;
     let choice = parsed
         .choices
-        .first()
+        .into_iter()
+        .next()
         .ok_or_else(|| String::from("The model returned no choices"))?;
 
-    Ok(choice.message.content.clone())
+    Ok(choice.message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_assistant_message_from_response() {
+        let body = r#"{
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "hello"
+                    }
+                }
+            ]
+        }"#;
+
+        let message = parse_response(body).expect("response should parse");
+
+        assert_eq!(message.role, "assistant");
+        assert_eq!(message.content, "hello");
+    }
+
+    #[test]
+    fn rejects_response_without_choices() {
+        let error = parse_response(r#"{"choices": []}"#).expect_err("response should fail");
+
+        assert_eq!(error, "The model returned no choices");
+    }
 }

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 const SYSTEM_PROMPT: &str = "You are a helpful coding assistant.";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Message {
     pub(crate) role: String,
     pub(crate) content: String,
