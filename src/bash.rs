@@ -1,4 +1,11 @@
+use std::{
+    io::{self, Write},
+    path::Path,
+    time::Duration,
+};
+
 use serde::Deserialize;
+use tokio::{process::Command, time::timeout};
 
 use crate::{message::ToolCall, tool::BASH_TOOL_NAME};
 
@@ -6,6 +13,14 @@ use crate::{message::ToolCall, tool::BASH_TOOL_NAME};
 pub(crate) struct BashCall {
     pub(crate) tool_call_id: String,
     pub(crate) command: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct BashOutput {
+    pub(crate) tool_call_id: String,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
 #[derive(Deserialize)]
@@ -31,6 +46,49 @@ pub(crate) fn parse_bash_call(tool_call: &ToolCall) -> Result<BashCall, String> 
         tool_call_id: tool_call.id.clone(),
         command: arguments.command,
     })
+}
+
+pub(crate) fn request_approval() -> Result<bool, String> {
+    print!("Allow command? [y/N]: ");
+    io::stdout()
+        .flush()
+        .map_err(|error| format!("Could not display approval prompt: {error}"))?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|error| format!("Could not read approval: {error}"))?;
+
+    Ok(is_approved(&input))
+}
+
+pub(crate) async fn execute_bash(
+    call: &BashCall,
+    working_directory: &Path,
+    timeout_duration: Duration,
+) -> Result<BashOutput, String> {
+    let mut command = Command::new("bash");
+    command
+        .arg("-lc")
+        .arg(&call.command)
+        .current_dir(working_directory)
+        .kill_on_drop(true);
+
+    let output = timeout(timeout_duration, command.output())
+        .await
+        .map_err(|_| format!("Bash command timed out after {timeout_duration:?}"))?
+        .map_err(|error| format!("Could not execute Bash command: {error}"))?;
+
+    Ok(BashOutput {
+        tool_call_id: call.tool_call_id.clone(),
+        exit_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
+}
+
+fn is_approved(input: &str) -> bool {
+    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 #[cfg(test)]
@@ -80,5 +138,60 @@ mod tests {
             .expect_err("empty command should fail");
 
         assert_eq!(error, "Bash command cannot be empty");
+    }
+
+    #[test]
+    fn accepts_only_explicit_approval() {
+        assert!(is_approved("y\n"));
+        assert!(is_approved("YES"));
+        assert!(!is_approved(""));
+        assert!(!is_approved("no"));
+    }
+
+    #[tokio::test]
+    async fn captures_successful_command_output() {
+        let call = BashCall {
+            tool_call_id: String::from("call_success"),
+            command: String::from("printf 'hello'"),
+        };
+
+        let output = execute_bash(&call, Path::new("."), Duration::from_secs(1))
+            .await
+            .expect("command should run");
+
+        assert_eq!(output.tool_call_id, "call_success");
+        assert_eq!(output.exit_code, Some(0));
+        assert_eq!(output.stdout, "hello");
+        assert!(output.stderr.is_empty());
+    }
+
+    #[tokio::test]
+    async fn captures_failed_command_output() {
+        let call = BashCall {
+            tool_call_id: String::from("call_failure"),
+            command: String::from("printf 'failed' >&2; exit 7"),
+        };
+
+        let output = execute_bash(&call, Path::new("."), Duration::from_secs(1))
+            .await
+            .expect("command should run");
+
+        assert_eq!(output.exit_code, Some(7));
+        assert!(output.stdout.is_empty());
+        assert_eq!(output.stderr, "failed");
+    }
+
+    #[tokio::test]
+    async fn times_out_long_running_command() {
+        let call = BashCall {
+            tool_call_id: String::from("call_timeout"),
+            command: String::from("sleep 1"),
+        };
+
+        let error = execute_bash(&call, Path::new("."), Duration::from_millis(20))
+            .await
+            .expect_err("command should time out");
+
+        assert!(error.starts_with("Bash command timed out after"));
     }
 }

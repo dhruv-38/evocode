@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, time::Duration};
 
 mod agent;
 mod bash;
@@ -7,6 +7,7 @@ mod provider;
 mod tool;
 
 use agent::{TurnOutcome, run_turn};
+use bash::{execute_bash, request_approval};
 use message::initial_messages;
 use provider::GroqProvider;
 use tool::default_tools;
@@ -33,8 +34,39 @@ async fn main() {
                 Ok(TurnOutcome::FinalText(response)) => println!("Response: {}", response),
                 Ok(TurnOutcome::ToolCalls(tool_calls)) => {
                     println!("The model requested {} tool call(s)", tool_calls.len());
+                    let working_directory = match env::current_dir() {
+                        Ok(path) => path,
+                        Err(error) => {
+                            println!("Error: Could not determine working directory: {error}");
+                            return;
+                        }
+                    };
+
                     for tool_call in tool_calls {
                         println!("{}: {}", tool_call.tool_call_id, tool_call.command);
+                        match request_approval() {
+                            Ok(true) => match execute_bash(
+                                &tool_call,
+                                &working_directory,
+                                Duration::from_secs(30),
+                            )
+                            .await
+                            {
+                                Ok(output) => {
+                                    println!("Tool result for {}", output.tool_call_id);
+                                    println!("Exit code: {:?}", output.exit_code);
+                                    if !output.stdout.is_empty() {
+                                        println!("stdout:\n{}", output.stdout);
+                                    }
+                                    if !output.stderr.is_empty() {
+                                        println!("stderr:\n{}", output.stderr);
+                                    }
+                                }
+                                Err(error) => println!("Tool error: {error}"),
+                            },
+                            Ok(false) => println!("Command denied"),
+                            Err(error) => println!("Approval error: {error}"),
+                        }
                     }
                 }
                 Err(error) => println!("Error: {}", error),
