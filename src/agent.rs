@@ -1,9 +1,11 @@
 use crate::{
-    bash::{BashCall, parse_bash_call},
+    bash::{BashCall, BashExecutor, parse_bash_call},
     message::Message,
     provider::ModelProvider,
     tool::ToolDefinition,
 };
+
+pub(crate) const DEFAULT_MAX_TURNS: usize = 10;
 
 #[derive(Debug)]
 pub(crate) enum TurnOutcome {
@@ -36,8 +38,32 @@ pub(crate) async fn run_turn<P: ModelProvider>(
     Ok(outcome)
 }
 
+pub(crate) async fn run_agent<P: ModelProvider, E: BashExecutor>(
+    provider: &P,
+    executor: &E,
+    messages: &mut Vec<Message>,
+    tools: &[ToolDefinition],
+    max_turns: usize,
+) -> Result<String, String> {
+    for _ in 0..max_turns {
+        match run_turn(provider, messages, tools).await? {
+            TurnOutcome::FinalText(response) => return Ok(response),
+            TurnOutcome::ToolCalls(tool_calls) => {
+                for tool_call in tool_calls {
+                    let result = executor.execute(&tool_call).await;
+                    messages.push(result);
+                }
+            }
+        }
+    }
+
+    Err(format!("Agent reached maximum turn limit of {max_turns}"))
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
     use crate::{
         message::{FunctionCall, initial_messages},
@@ -52,12 +78,26 @@ mod tests {
 
     struct InvalidToolCallingProvider;
 
+    struct LoopProvider {
+        requests: AtomicUsize,
+    }
+
+    struct AlwaysToolProvider {
+        requests: AtomicUsize,
+    }
+
+    struct FakeExecutor;
+
     fn tool_call_message(arguments: &str) -> Message {
+        tool_call_message_with_id("call_123", arguments)
+    }
+
+    fn tool_call_message_with_id(id: &str, arguments: &str) -> Message {
         Message {
             role: String::from("assistant"),
             content: None,
             tool_calls: vec![crate::message::ToolCall {
-                id: String::from("call_123"),
+                id: String::from(id),
                 kind: String::from("function"),
                 function: FunctionCall {
                     name: String::from("bash"),
@@ -65,6 +105,15 @@ mod tests {
                 },
             }],
             tool_call_id: None,
+        }
+    }
+
+    impl BashExecutor for FakeExecutor {
+        async fn execute(&self, call: &BashCall) -> Message {
+            Message::tool_result(
+                call.tool_call_id.clone(),
+                String::from("Exit code: 0\nstdout:\n/home/test"),
+            )
         }
     }
 
@@ -109,6 +158,46 @@ mod tests {
             _tools: &[ToolDefinition],
         ) -> Result<Message, String> {
             Ok(tool_call_message("not json"))
+        }
+    }
+
+    impl ModelProvider for LoopProvider {
+        async fn send(
+            &self,
+            messages: &[Message],
+            _tools: &[ToolDefinition],
+        ) -> Result<Message, String> {
+            match self.requests.fetch_add(1, Ordering::SeqCst) {
+                0 => {
+                    assert_eq!(messages.len(), 2);
+                    Ok(tool_call_message(r#"{"command":"pwd"}"#))
+                }
+                1 => {
+                    assert_eq!(messages.len(), 4);
+                    assert_eq!(messages[2].role, "assistant");
+                    assert_eq!(messages[3].role, "tool");
+                    assert_eq!(messages[3].tool_call_id.as_deref(), Some("call_123"));
+                    Ok(Message::text(
+                        "assistant",
+                        String::from("You are in /home/test"),
+                    ))
+                }
+                _ => panic!("agent made too many provider requests"),
+            }
+        }
+    }
+
+    impl ModelProvider for AlwaysToolProvider {
+        async fn send(
+            &self,
+            _messages: &[Message],
+            _tools: &[ToolDefinition],
+        ) -> Result<Message, String> {
+            let request = self.requests.fetch_add(1, Ordering::SeqCst);
+            Ok(tool_call_message_with_id(
+                &format!("call_{request}"),
+                r#"{"command":"pwd"}"#,
+            ))
         }
     }
 
@@ -180,5 +269,46 @@ mod tests {
 
         assert!(error.starts_with("Invalid Bash tool arguments:"));
         assert_eq!(messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn continues_after_a_tool_result_until_final_text() {
+        let provider = LoopProvider {
+            requests: AtomicUsize::new(0),
+        };
+        let executor = FakeExecutor;
+        let mut messages = initial_messages(String::from("show the current directory"));
+        let tools = default_tools();
+
+        let response = run_agent(&provider, &executor, &mut messages, &tools, 10)
+            .await
+            .expect("agent should finish");
+
+        assert_eq!(response, "You are in /home/test");
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[3].role, "tool");
+        assert_eq!(messages[4].role, "assistant");
+        assert_eq!(
+            messages[4].content.as_deref(),
+            Some("You are in /home/test")
+        );
+    }
+
+    #[tokio::test]
+    async fn stops_when_the_turn_limit_is_reached() {
+        let provider = AlwaysToolProvider {
+            requests: AtomicUsize::new(0),
+        };
+        let executor = FakeExecutor;
+        let mut messages = initial_messages(String::from("keep checking"));
+        let tools = default_tools();
+
+        let error = run_agent(&provider, &executor, &mut messages, &tools, 2)
+            .await
+            .expect_err("agent should stop at its turn limit");
+
+        assert_eq!(error, "Agent reached maximum turn limit of 2");
+        assert_eq!(provider.requests.load(Ordering::SeqCst), 2);
+        assert_eq!(messages.len(), 6);
     }
 }

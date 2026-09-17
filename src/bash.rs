@@ -1,6 +1,6 @@
 use std::{
     io::{self, Write},
-    path::Path,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -24,6 +24,62 @@ pub(crate) struct BashOutput {
     pub(crate) exit_code: Option<i32>,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+}
+
+pub(crate) trait BashExecutor {
+    async fn execute(&self, call: &BashCall) -> Message;
+}
+
+pub(crate) struct InteractiveBashExecutor {
+    working_directory: PathBuf,
+    timeout_duration: Duration,
+}
+
+impl InteractiveBashExecutor {
+    pub(crate) fn new(working_directory: PathBuf, timeout_duration: Duration) -> Self {
+        Self {
+            working_directory,
+            timeout_duration,
+        }
+    }
+}
+
+impl BashExecutor for InteractiveBashExecutor {
+    async fn execute(&self, call: &BashCall) -> Message {
+        println!("{}: {}", call.tool_call_id, call.command);
+
+        match request_approval() {
+            Ok(true) => match execute_bash(call, &self.working_directory, self.timeout_duration)
+                .await
+            {
+                Ok(output) => {
+                    println!("Tool result for {}", output.tool_call_id);
+                    println!("Exit code: {:?}", output.exit_code);
+                    if !output.stdout.is_empty() {
+                        println!("stdout:\n{}", output.stdout);
+                    }
+                    if !output.stderr.is_empty() {
+                        println!("stderr:\n{}", output.stderr);
+                    }
+                    output.into_tool_result()
+                }
+                Err(error) => {
+                    Message::tool_result(call.tool_call_id.clone(), format!("Tool error: {error}"))
+                }
+            },
+            Ok(false) => {
+                println!("Command denied");
+                Message::tool_result(
+                    call.tool_call_id.clone(),
+                    String::from("Command denied by user"),
+                )
+            }
+            Err(error) => Message::tool_result(
+                call.tool_call_id.clone(),
+                format!("Could not request command approval: {error}"),
+            ),
+        }
+    }
 }
 
 impl BashOutput {
