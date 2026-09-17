@@ -5,7 +5,7 @@ mod message;
 mod provider;
 mod tool;
 
-use agent::run_turn;
+use agent::{TurnOutcome, run_turn};
 use message::initial_messages;
 use provider::GroqProvider;
 use tool::default_tools;
@@ -29,7 +29,10 @@ async fn main() {
             let tools = default_tools();
 
             match run_turn(&provider, &mut messages, &tools).await {
-                Ok(response) => println!("Response: {}", response),
+                Ok(TurnOutcome::FinalText(response)) => println!("Response: {}", response),
+                Ok(TurnOutcome::ToolCalls(tool_calls)) => {
+                    println!("The model requested {} tool call(s)", tool_calls.len());
+                }
                 Err(error) => println!("Error: {}", error),
             }
         }
