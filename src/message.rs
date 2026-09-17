@@ -36,6 +36,15 @@ impl Message {
             tool_call_id: None,
         }
     }
+
+    pub(crate) fn tool_result(tool_call_id: String, content: String) -> Self {
+        Self {
+            role: String::from("tool"),
+            content: Some(content),
+            tool_calls: Vec::new(),
+            tool_call_id: Some(tool_call_id),
+        }
+    }
 }
 
 pub(crate) fn initial_messages(prompt: String) -> Vec<Message> {
@@ -64,5 +73,16 @@ mod tests {
                 .iter()
                 .all(|message| message.tool_call_id.is_none())
         );
+    }
+
+    #[test]
+    fn tool_result_references_original_call() {
+        let message = Message::tool_result(String::from("call_123"), String::from("Exit code: 0"));
+        let value = serde_json::to_value(message).expect("message should serialize");
+
+        assert_eq!(value["role"], "tool");
+        assert_eq!(value["tool_call_id"], "call_123");
+        assert_eq!(value["content"], "Exit code: 0");
+        assert!(value.get("tool_calls").is_none());
     }
 }

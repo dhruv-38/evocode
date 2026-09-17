@@ -8,7 +8,7 @@ mod tool;
 
 use agent::{TurnOutcome, run_turn};
 use bash::{execute_bash, request_approval};
-use message::initial_messages;
+use message::{Message, initial_messages};
 use provider::GroqProvider;
 use tool::default_tools;
 
@@ -44,7 +44,7 @@ async fn main() {
 
                     for tool_call in tool_calls {
                         println!("{}: {}", tool_call.tool_call_id, tool_call.command);
-                        match request_approval() {
+                        let tool_result = match request_approval() {
                             Ok(true) => match execute_bash(
                                 &tool_call,
                                 &working_directory,
@@ -61,12 +61,32 @@ async fn main() {
                                     if !output.stderr.is_empty() {
                                         println!("stderr:\n{}", output.stderr);
                                     }
+                                    output.into_tool_result()
                                 }
-                                Err(error) => println!("Tool error: {error}"),
+                                Err(error) => {
+                                    println!("Tool error: {error}");
+                                    Message::tool_result(
+                                        tool_call.tool_call_id,
+                                        format!("Tool error: {error}"),
+                                    )
+                                }
                             },
-                            Ok(false) => println!("Command denied"),
-                            Err(error) => println!("Approval error: {error}"),
-                        }
+                            Ok(false) => {
+                                println!("Command denied");
+                                Message::tool_result(
+                                    tool_call.tool_call_id,
+                                    String::from("Command denied by user"),
+                                )
+                            }
+                            Err(error) => {
+                                println!("Approval error: {error}");
+                                Message::tool_result(
+                                    tool_call.tool_call_id,
+                                    format!("Could not request command approval: {error}"),
+                                )
+                            }
+                        };
+                        messages.push(tool_result);
                     }
                 }
                 Err(error) => println!("Error: {}", error),

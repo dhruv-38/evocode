@@ -7,7 +7,10 @@ use std::{
 use serde::Deserialize;
 use tokio::{process::Command, time::timeout};
 
-use crate::{message::ToolCall, tool::BASH_TOOL_NAME};
+use crate::{
+    message::{Message, ToolCall},
+    tool::BASH_TOOL_NAME,
+};
 
 #[derive(Debug)]
 pub(crate) struct BashCall {
@@ -21,6 +24,26 @@ pub(crate) struct BashOutput {
     pub(crate) exit_code: Option<i32>,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+}
+
+impl BashOutput {
+    pub(crate) fn into_tool_result(self) -> Message {
+        let exit_code = self.exit_code.map_or_else(
+            || String::from("terminated by signal"),
+            |code| code.to_string(),
+        );
+        let mut content = format!("Exit code: {exit_code}");
+        if !self.stdout.is_empty() {
+            content.push_str("\nstdout:\n");
+            content.push_str(&self.stdout);
+        }
+        if !self.stderr.is_empty() {
+            content.push_str("\nstderr:\n");
+            content.push_str(&self.stderr);
+        }
+
+        Message::tool_result(self.tool_call_id, content)
+    }
 }
 
 #[derive(Deserialize)]
@@ -193,5 +216,23 @@ mod tests {
             .expect_err("command should time out");
 
         assert!(error.starts_with("Bash command timed out after"));
+    }
+
+    #[test]
+    fn converts_output_to_tool_result_message() {
+        let message = BashOutput {
+            tool_call_id: String::from("call_output"),
+            exit_code: Some(7),
+            stdout: String::from("partial output"),
+            stderr: String::from("failure"),
+        }
+        .into_tool_result();
+
+        let content = message.content.expect("tool result should contain text");
+        assert_eq!(message.role, "tool");
+        assert_eq!(message.tool_call_id.as_deref(), Some("call_output"));
+        assert!(content.contains("Exit code: 7"));
+        assert!(content.contains("stdout:\npartial output"));
+        assert!(content.contains("stderr:\nfailure"));
     }
 }
