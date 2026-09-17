@@ -1,5 +1,6 @@
 use crate::{
-    message::{Message, ToolCall},
+    bash::{BashCall, parse_bash_call},
+    message::Message,
     provider::ModelProvider,
     tool::ToolDefinition,
 };
@@ -7,7 +8,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) enum TurnOutcome {
     FinalText(String),
-    ToolCalls(Vec<ToolCall>),
+    ToolCalls(Vec<BashCall>),
 }
 
 pub(crate) async fn run_turn<P: ModelProvider>(
@@ -23,7 +24,12 @@ pub(crate) async fn run_turn<P: ModelProvider>(
             .ok_or_else(|| String::from("The model response contained no text or tool calls"))?;
         TurnOutcome::FinalText(content)
     } else {
-        TurnOutcome::ToolCalls(response.tool_calls.clone())
+        let tool_calls = response
+            .tool_calls
+            .iter()
+            .map(parse_bash_call)
+            .collect::<Result<Vec<_>, _>>()?;
+        TurnOutcome::ToolCalls(tool_calls)
     };
     messages.push(response);
 
@@ -43,6 +49,24 @@ mod tests {
     struct FailingProvider;
 
     struct ToolCallingProvider;
+
+    struct InvalidToolCallingProvider;
+
+    fn tool_call_message(arguments: &str) -> Message {
+        Message {
+            role: String::from("assistant"),
+            content: None,
+            tool_calls: vec![crate::message::ToolCall {
+                id: String::from("call_123"),
+                kind: String::from("function"),
+                function: FunctionCall {
+                    name: String::from("bash"),
+                    arguments: String::from(arguments),
+                },
+            }],
+            tool_call_id: None,
+        }
+    }
 
     impl ModelProvider for FakeProvider {
         async fn send(
@@ -74,19 +98,17 @@ mod tests {
             _messages: &[Message],
             _tools: &[ToolDefinition],
         ) -> Result<Message, String> {
-            Ok(Message {
-                role: String::from("assistant"),
-                content: None,
-                tool_calls: vec![ToolCall {
-                    id: String::from("call_123"),
-                    kind: String::from("function"),
-                    function: FunctionCall {
-                        name: String::from("bash"),
-                        arguments: String::from(r#"{"command":"pwd"}"#),
-                    },
-                }],
-                tool_call_id: None,
-            })
+            Ok(tool_call_message(r#"{"command":"pwd"}"#))
+        }
+    }
+
+    impl ModelProvider for InvalidToolCallingProvider {
+        async fn send(
+            &self,
+            _messages: &[Message],
+            _tools: &[ToolDefinition],
+        ) -> Result<Message, String> {
+            Ok(tool_call_message("not json"))
         }
     }
 
@@ -136,13 +158,27 @@ mod tests {
         match outcome {
             TurnOutcome::ToolCalls(tool_calls) => {
                 assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].id, "call_123");
-                assert_eq!(tool_calls[0].function.name, "bash");
+                assert_eq!(tool_calls[0].tool_call_id, "call_123");
+                assert_eq!(tool_calls[0].command, "pwd");
             }
             TurnOutcome::FinalText(_) => panic!("expected tool calls"),
         }
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[2].role, "assistant");
         assert_eq!(messages[2].tool_calls.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_tool_arguments_without_changing_history() {
+        let provider = InvalidToolCallingProvider;
+        let mut messages = initial_messages(String::from("show the current directory"));
+        let tools = default_tools();
+
+        let error = run_turn(&provider, &mut messages, &tools)
+            .await
+            .expect_err("turn should fail");
+
+        assert!(error.starts_with("Invalid Bash tool arguments:"));
+        assert_eq!(messages.len(), 2);
     }
 }

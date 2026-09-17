@@ -1,6 +1,7 @@
 use std::env;
 
 mod agent;
+mod bash;
 mod message;
 mod provider;
 mod tool;
@@ -32,6 +33,9 @@ async fn main() {
                 Ok(TurnOutcome::FinalText(response)) => println!("Response: {}", response),
                 Ok(TurnOutcome::ToolCalls(tool_calls)) => {
                     println!("The model requested {} tool call(s)", tool_calls.len());
+                    for tool_call in tool_calls {
+                        println!("{}: {}", tool_call.tool_call_id, tool_call.command);
+                    }
                 }
                 Err(error) => println!("Error: {}", error),
             }

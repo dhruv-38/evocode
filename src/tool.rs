@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
+pub(crate) const BASH_TOOL_NAME: &str = "bash";
+
 #[derive(Debug, Serialize)]
 pub(crate) struct ToolDefinition {
     #[serde(rename = "type")]
@@ -19,7 +21,7 @@ pub(crate) fn default_tools() -> Vec<ToolDefinition> {
     vec![ToolDefinition {
         kind: String::from("function"),
         function: FunctionDefinition {
-            name: String::from("bash"),
+            name: String::from(BASH_TOOL_NAME),
             description: String::from("Execute a shell command in the current working directory"),
             parameters: json!({
                 "type": "object",
