@@ -5,6 +5,7 @@ mod bash;
 mod message;
 mod provider;
 mod repl;
+mod session;
 mod tool;
 
 use agent::{DEFAULT_MAX_TURNS, run_agent};
@@ -12,6 +13,7 @@ use bash::InteractiveBashExecutor;
 use message::{Message, conversation_messages};
 use provider::GroqProvider;
 use repl::{ReplCommand, ReplInput, classify_input, format_history, help_text, read_input};
+use session::{DEFAULT_SESSION_FILE, load_session, save_session};
 use tool::default_tools;
 
 #[tokio::main]
@@ -66,6 +68,32 @@ async fn main() {
             }
             ReplInput::Command(ReplCommand::History) => {
                 println!("{}", format_history(&messages));
+                continue;
+            }
+            ReplInput::Command(ReplCommand::Save(path)) => {
+                let path = path.map_or_else(
+                    || working_directory.join(DEFAULT_SESSION_FILE),
+                    |path| working_directory.join(path),
+                );
+                match save_session(&path, &messages) {
+                    Ok(()) => println!("Session saved to {}.", path.display()),
+                    Err(error) => println!("Error: {error}"),
+                }
+                continue;
+            }
+            ReplInput::Command(ReplCommand::Load(path)) => {
+                let path = path.map_or_else(
+                    || working_directory.join(DEFAULT_SESSION_FILE),
+                    |path| working_directory.join(path),
+                );
+                match load_session(&path) {
+                    Ok(mut loaded_messages) => {
+                        messages = conversation_messages(&working_directory);
+                        messages.append(&mut loaded_messages);
+                        println!("Session loaded from {}.", path.display());
+                    }
+                    Err(error) => println!("Error: {error}"),
+                }
                 continue;
             }
             ReplInput::UnknownCommand(command) => {

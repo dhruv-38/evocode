@@ -10,6 +10,8 @@ pub(crate) enum ReplCommand {
     Help,
     Clear,
     History,
+    Save(Option<String>),
+    Load(Option<String>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -50,10 +52,17 @@ pub(crate) fn classify_input(input: &str) -> ReplInput {
         return ReplInput::Exit;
     }
 
-    match input.to_ascii_lowercase().as_str() {
+    let command_end = input.find(char::is_whitespace).unwrap_or(input.len());
+    let command = &input[..command_end];
+    let argument = input[command_end..].trim();
+    let argument = (!argument.is_empty()).then(|| String::from(argument));
+
+    match command.to_ascii_lowercase().as_str() {
         "/help" => return ReplInput::Command(ReplCommand::Help),
         "/clear" => return ReplInput::Command(ReplCommand::Clear),
         "/history" => return ReplInput::Command(ReplCommand::History),
+        "/save" => return ReplInput::Command(ReplCommand::Save(argument)),
+        "/load" => return ReplInput::Command(ReplCommand::Load(argument)),
         _ => {}
     }
     if input.starts_with('/') {
@@ -64,7 +73,7 @@ pub(crate) fn classify_input(input: &str) -> ReplInput {
 }
 
 pub(crate) fn help_text() -> &'static str {
-    "Commands:\n  /help     Show available commands\n  /clear    Start a new conversation\n  /history  Show this conversation\n  /exit     Exit the agent"
+    "Commands:\n  /help         Show available commands\n  /clear        Start a new conversation\n  /history      Show this conversation\n  /save [path]  Save this conversation\n  /load [path]  Load a saved conversation\n  /exit         Exit the agent"
 }
 
 pub(crate) fn format_history(messages: &[Message]) -> String {
@@ -181,6 +190,14 @@ mod tests {
         assert_eq!(
             classify_input("/history"),
             ReplInput::Command(ReplCommand::History)
+        );
+        assert_eq!(
+            classify_input("/save"),
+            ReplInput::Command(ReplCommand::Save(None))
+        );
+        assert_eq!(
+            classify_input("/load my session.json"),
+            ReplInput::Command(ReplCommand::Load(Some(String::from("my session.json"))))
         );
     }
 
