@@ -62,7 +62,10 @@ pub(crate) async fn run_agent<P: ModelProvider, E: BashExecutor>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::{
+        path::Path,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     use super::*;
     use crate::{
@@ -89,7 +92,7 @@ mod tests {
     struct FakeExecutor;
 
     fn initial_messages(prompt: String) -> Vec<Message> {
-        let mut messages = conversation_messages();
+        let mut messages = conversation_messages(Path::new("/test/project"));
         messages.push(Message::text("user", prompt));
         messages
     }

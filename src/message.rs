@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use std::path::Path;
 
-const SYSTEM_PROMPT: &str = "You are a helpful coding assistant.";
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Message {
@@ -47,8 +47,29 @@ impl Message {
     }
 }
 
-pub(crate) fn conversation_messages() -> Vec<Message> {
-    vec![Message::text("system", String::from(SYSTEM_PROMPT))]
+pub(crate) fn conversation_messages(working_directory: &Path) -> Vec<Message> {
+    vec![Message::text("system", system_prompt(working_directory))]
+}
+
+fn system_prompt(working_directory: &Path) -> String {
+    format!(
+        r#"You are a terminal coding agent helping the user understand and modify a local project.
+
+Current working directory: {working_directory:?}
+
+Operating rules:
+- Use the bash tool to inspect files, run commands, edit code, and verify work when needed.
+- Treat tool results as authoritative. Never claim a command succeeded without seeing its result.
+- Work inside the current working directory unless the user explicitly asks otherwise.
+- Inspect relevant files before editing and preserve unrelated user changes.
+- Prefer small, focused changes that directly address the user's request.
+- Run relevant checks after making changes and report any checks you could not run.
+- Avoid destructive commands unless the user explicitly requests them.
+- Each bash call starts in the current working directory; directory changes do not persist between calls.
+- Avoid interactive commands because bash tool calls cannot answer their prompts.
+- Long command output may be truncated in the middle. Use narrower commands when more detail is needed.
+- When no tool is needed, answer the user directly and concisely."#
+    )
 }
 
 #[cfg(test)]
@@ -57,12 +78,20 @@ mod tests {
 
     #[test]
     fn conversation_contains_system_instruction_and_user_prompt() {
-        let mut messages = conversation_messages();
+        let mut messages = conversation_messages(Path::new("/work/project"));
         messages.push(Message::text("user", String::from("Fix the parser")));
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "system");
-        assert_eq!(messages[0].content.as_deref(), Some(SYSTEM_PROMPT));
+        let system_prompt = messages[0]
+            .content
+            .as_deref()
+            .expect("system message should contain text");
+        assert!(system_prompt.contains("terminal coding agent"));
+        assert!(system_prompt.contains(r#"Current working directory: "/work/project""#));
+        assert!(system_prompt.contains("Use the bash tool"));
+        assert!(system_prompt.contains("directory changes do not persist"));
+        assert!(system_prompt.contains("output may be truncated"));
         assert_eq!(messages[1].role, "user");
         assert_eq!(messages[1].content.as_deref(), Some("Fix the parser"));
         assert!(messages.iter().all(|message| message.tool_calls.is_empty()));

@@ -32,9 +32,9 @@ async fn main() {
     };
 
     let provider = GroqProvider::new(api_key);
+    let mut messages = conversation_messages(&working_directory);
     let executor = InteractiveBashExecutor::new(working_directory, Duration::from_secs(30));
     let tools = default_tools();
-    let mut messages = conversation_messages();
     let command_line_prompt = env::args().skip(1).collect::<Vec<_>>().join(" ");
     let mut pending_prompt =
         (!command_line_prompt.trim().is_empty()).then_some(command_line_prompt);
