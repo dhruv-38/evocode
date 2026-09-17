@@ -12,6 +12,9 @@ use crate::{
     tool::BASH_TOOL_NAME,
 };
 
+const MAX_STREAM_OUTPUT_BYTES: usize = 8 * 1024;
+const OUTPUT_TRUNCATION_MARKER: &str = "\n... output truncated ...\n";
+
 #[derive(Debug)]
 pub(crate) struct BashCall {
     pub(crate) tool_call_id: String,
@@ -161,9 +164,45 @@ pub(crate) async fn execute_bash(
     Ok(BashOutput {
         tool_call_id: call.tool_call_id.clone(),
         exit_code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        stdout: truncate_middle(
+            &String::from_utf8_lossy(&output.stdout),
+            MAX_STREAM_OUTPUT_BYTES,
+        ),
+        stderr: truncate_middle(
+            &String::from_utf8_lossy(&output.stderr),
+            MAX_STREAM_OUTPUT_BYTES,
+        ),
     })
+}
+
+fn truncate_middle(output: &str, max_bytes: usize) -> String {
+    if output.len() <= max_bytes {
+        return String::from(output);
+    }
+    if max_bytes <= OUTPUT_TRUNCATION_MARKER.len() {
+        return String::from(&OUTPUT_TRUNCATION_MARKER[..max_bytes]);
+    }
+
+    let available_bytes = max_bytes - OUTPUT_TRUNCATION_MARKER.len();
+    let head_budget = available_bytes.div_ceil(2);
+    let tail_budget = available_bytes / 2;
+
+    let mut head_end = head_budget;
+    while !output.is_char_boundary(head_end) {
+        head_end -= 1;
+    }
+
+    let mut tail_start = output.len() - tail_budget;
+    while !output.is_char_boundary(tail_start) {
+        tail_start += 1;
+    }
+
+    format!(
+        "{}{}{}",
+        &output[..head_end],
+        OUTPUT_TRUNCATION_MARKER,
+        &output[tail_start..]
+    )
 }
 
 fn is_approved(input: &str) -> bool {
@@ -272,6 +311,52 @@ mod tests {
             .expect_err("command should time out");
 
         assert!(error.starts_with("Bash command timed out after"));
+    }
+
+    #[tokio::test]
+    async fn limits_large_command_output() {
+        let call = BashCall {
+            tool_call_id: String::from("call_large_output"),
+            command: String::from("printf 'start'; printf '%09000d' 0; printf 'end'"),
+        };
+
+        let output = execute_bash(&call, Path::new("."), Duration::from_secs(1))
+            .await
+            .expect("command should run");
+
+        assert!(output.stdout.len() <= MAX_STREAM_OUTPUT_BYTES);
+        assert!(output.stdout.starts_with("start"));
+        assert!(output.stdout.ends_with("end"));
+        assert!(output.stdout.contains(OUTPUT_TRUNCATION_MARKER));
+    }
+
+    #[test]
+    fn leaves_small_output_unchanged() {
+        assert_eq!(truncate_middle("short output", 64), "short output");
+    }
+
+    #[test]
+    fn truncates_the_middle_and_preserves_both_ends() {
+        let output = format!("start{}end", "x".repeat(100));
+
+        let truncated = truncate_middle(&output, 64);
+
+        assert_eq!(truncated.len(), 64);
+        assert!(truncated.starts_with("start"));
+        assert!(truncated.ends_with("end"));
+        assert!(truncated.contains(OUTPUT_TRUNCATION_MARKER));
+    }
+
+    #[test]
+    fn truncates_utf8_only_at_character_boundaries() {
+        let output = "😀".repeat(100);
+
+        let truncated = truncate_middle(&output, 64);
+
+        assert!(truncated.len() <= 64);
+        assert!(truncated.starts_with('😀'));
+        assert!(truncated.ends_with('😀'));
+        assert!(truncated.contains(OUTPUT_TRUNCATION_MARKER));
     }
 
     #[test]
