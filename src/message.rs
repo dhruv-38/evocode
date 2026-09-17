@@ -47,11 +47,8 @@ impl Message {
     }
 }
 
-pub(crate) fn initial_messages(prompt: String) -> Vec<Message> {
-    vec![
-        Message::text("system", String::from(SYSTEM_PROMPT)),
-        Message::text("user", prompt),
-    ]
+pub(crate) fn conversation_messages() -> Vec<Message> {
+    vec![Message::text("system", String::from(SYSTEM_PROMPT))]
 }
 
 #[cfg(test)]
@@ -59,8 +56,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initial_messages_contain_system_instruction_and_user_prompt() {
-        let messages = initial_messages(String::from("Fix the parser"));
+    fn conversation_contains_system_instruction_and_user_prompt() {
+        let mut messages = conversation_messages();
+        messages.push(Message::text("user", String::from("Fix the parser")));
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "system");

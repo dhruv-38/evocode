@@ -66,7 +66,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        message::{FunctionCall, initial_messages},
+        message::{FunctionCall, conversation_messages},
         tool::default_tools,
     };
 
@@ -87,6 +87,12 @@ mod tests {
     }
 
     struct FakeExecutor;
+
+    fn initial_messages(prompt: String) -> Vec<Message> {
+        let mut messages = conversation_messages();
+        messages.push(Message::text("user", prompt));
+        messages
+    }
 
     fn tool_call_message(arguments: &str) -> Message {
         tool_call_message_with_id("call_123", arguments)
