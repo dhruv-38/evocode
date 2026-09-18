@@ -1,15 +1,17 @@
-use std::{env, time::Duration};
+use std::env;
 
 mod agent;
 mod bash;
+mod config;
 mod message;
 mod provider;
 mod repl;
 mod session;
 mod tool;
 
-use agent::{DEFAULT_MAX_TURNS, run_agent};
+use agent::run_agent;
 use bash::InteractiveBashExecutor;
+use config::Config;
 use message::{Message, conversation_messages};
 use provider::GroqProvider;
 use repl::{ReplCommand, ReplInput, classify_input, format_history, help_text, read_input};
@@ -18,10 +20,10 @@ use tool::default_tools;
 
 #[tokio::main]
 async fn main() {
-    let api_key = match env::var("GROQ_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            println!("Error: API Key is not set or invalid!");
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(error) => {
+            println!("Error: {error}");
             return;
         }
     };
@@ -33,9 +35,9 @@ async fn main() {
         }
     };
 
-    let provider = GroqProvider::new(api_key);
+    let provider = GroqProvider::new(config.api_key.clone(), config.model.clone());
     let mut messages = conversation_messages(&working_directory);
-    let executor = InteractiveBashExecutor::new(working_directory.clone(), Duration::from_secs(30));
+    let executor = InteractiveBashExecutor::new(working_directory.clone(), config.bash_timeout);
     let tools = default_tools();
     let command_line_prompt = env::args().skip(1).collect::<Vec<_>>().join(" ");
     let mut pending_input =
@@ -68,6 +70,10 @@ async fn main() {
             }
             ReplInput::Command(ReplCommand::History) => {
                 println!("{}", format_history(&messages));
+                continue;
+            }
+            ReplInput::Command(ReplCommand::Config) => {
+                println!("{}", config.summary());
                 continue;
             }
             ReplInput::Command(ReplCommand::Save(path)) => {
@@ -110,7 +116,7 @@ async fn main() {
             &executor,
             &mut messages,
             &tools,
-            DEFAULT_MAX_TURNS,
+            config.max_turns,
         )
         .await
         {

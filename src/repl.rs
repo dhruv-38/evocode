@@ -10,6 +10,7 @@ pub(crate) enum ReplCommand {
     Help,
     Clear,
     History,
+    Config,
     Save(Option<String>),
     Load(Option<String>),
 }
@@ -61,6 +62,7 @@ pub(crate) fn classify_input(input: &str) -> ReplInput {
         "/help" => return ReplInput::Command(ReplCommand::Help),
         "/clear" => return ReplInput::Command(ReplCommand::Clear),
         "/history" => return ReplInput::Command(ReplCommand::History),
+        "/config" => return ReplInput::Command(ReplCommand::Config),
         "/save" => return ReplInput::Command(ReplCommand::Save(argument)),
         "/load" => return ReplInput::Command(ReplCommand::Load(argument)),
         _ => {}
@@ -73,7 +75,7 @@ pub(crate) fn classify_input(input: &str) -> ReplInput {
 }
 
 pub(crate) fn help_text() -> &'static str {
-    "Commands:\n  /help         Show available commands\n  /clear        Start a new conversation\n  /history      Show this conversation\n  /save [path]  Save this conversation\n  /load [path]  Load a saved conversation\n  /exit         Exit the agent"
+    "Commands:\n  /help         Show available commands\n  /clear        Start a new conversation\n  /history      Show this conversation\n  /config       Show active configuration\n  /save [path]  Save this conversation\n  /load [path]  Load a saved conversation\n  /exit         Exit the agent"
 }
 
 pub(crate) fn format_history(messages: &[Message]) -> String {
@@ -190,6 +192,10 @@ mod tests {
         assert_eq!(
             classify_input("/history"),
             ReplInput::Command(ReplCommand::History)
+        );
+        assert_eq!(
+            classify_input("/config"),
+            ReplInput::Command(ReplCommand::Config)
         );
         assert_eq!(
             classify_input("/save"),

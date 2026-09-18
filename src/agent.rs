@@ -5,8 +5,6 @@ use crate::{
     tool::ToolDefinition,
 };
 
-pub(crate) const DEFAULT_MAX_TURNS: usize = 10;
-
 #[derive(Debug)]
 pub(crate) enum TurnOutcome {
     FinalText(String),

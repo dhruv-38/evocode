@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use crate::{message::Message, tool::ToolDefinition};
 
 const GROQ_ENDPOINT: &str = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL: &str = "openai/gpt-oss-20b";
 
 pub(crate) trait ModelProvider {
     async fn send(&self, messages: &[Message], tools: &[ToolDefinition])
@@ -13,13 +12,15 @@ pub(crate) trait ModelProvider {
 pub(crate) struct GroqProvider {
     client: reqwest::Client,
     api_key: String,
+    model: String,
 }
 
 impl GroqProvider {
-    pub(crate) fn new(api_key: String) -> Self {
+    pub(crate) fn new(api_key: String, model: String) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
+            model,
         }
     }
 }
@@ -48,7 +49,7 @@ impl ModelProvider for GroqProvider {
         tools: &[ToolDefinition],
     ) -> Result<Message, String> {
         let request = ModelRequest {
-            model: MODEL,
+            model: &self.model,
             messages,
             tools,
         };
