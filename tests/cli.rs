@@ -13,10 +13,8 @@ struct TestDirectory(PathBuf);
 impl TestDirectory {
     fn new() -> Self {
         let id = TEST_DIRECTORY_ID.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "rust-terminal-agent-cli-test-{}-{id}",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("evocode-cli-test-{}-{id}", std::process::id()));
         fs::create_dir(&path).expect("test directory should be created");
         Self(path)
     }
@@ -29,7 +27,7 @@ impl Drop for TestDirectory {
 }
 
 fn run_agent(directory: &Path, arguments: &[&str], input: &str, api_key: Option<&str>) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_rust-terminal-agent"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_evocode"));
     command
         .args(arguments)
         .current_dir(directory)
@@ -76,7 +74,7 @@ fn exits_with_an_error_when_the_api_key_is_missing() {
 #[test]
 fn prints_configured_values_without_exposing_the_api_key() {
     let directory = TestDirectory::new();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_rust-terminal-agent"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_evocode"));
     let output = command
         .arg("/config")
         .current_dir(&directory.0)
@@ -114,7 +112,7 @@ fn local_commands_and_session_round_trip_work_without_the_api() {
     assert!(stdout.contains("Session loaded from"));
     assert!(stdout.contains("Unknown command: /not-a-command"));
 
-    let session_path = directory.0.join(".rust-terminal-agent-session.json");
+    let session_path = directory.0.join(".evocode-session.json");
     let session = fs::read_to_string(session_path).expect("session should have been saved");
     let session: serde_json::Value =
         serde_json::from_str(&session).expect("session should contain JSON");

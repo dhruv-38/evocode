@@ -53,7 +53,7 @@ pub(crate) fn conversation_messages(working_directory: &Path) -> Vec<Message> {
 
 fn system_prompt(working_directory: &Path) -> String {
     format!(
-        r#"You are a terminal coding agent helping the user understand and modify a local project.
+        r#"You are Evocode, a terminal coding agent helping the user understand and modify a local project.
 
 Current working directory: {working_directory:?}
 

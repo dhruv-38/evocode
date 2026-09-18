@@ -1,6 +1,6 @@
-# Rust Terminal Agent
+# Evocode
 
-An interactive AI coding agent that can inspect and modify a local project by requesting Bash commands. It uses Groq's OpenAI-compatible chat completions API and asks for approval before every command.
+Evocode is an interactive AI coding agent that can inspect and modify a local project by requesting Bash commands. It uses Groq's OpenAI-compatible chat completions API and asks for approval before every command.
 
 This repository is a learning-focused V1 inspired by terminal agent harnesses such as Pi. The implementation is intentionally small enough to understand while still including a real agent loop, tool execution, conversation history, sessions, retries, configuration, and safety limits.
 
@@ -29,7 +29,7 @@ This repository is a learning-focused V1 inspired by terminal agent harnesses su
 After cloning the repository, install the binary from the project directory:
 
 ```bash
-cd rust-terminal-agent
+cd evocode
 cargo install --path .
 ```
 
@@ -63,7 +63,7 @@ Start an interactive session in the project you want the agent to work on:
 
 ```bash
 cd /path/to/your/project
-rust-terminal-agent
+evocode
 ```
 
 Then enter a request:
@@ -75,7 +75,7 @@ Then enter a request:
 You can also provide the first prompt as command-line arguments. The program remains interactive after answering it:
 
 ```bash
-rust-terminal-agent "find and explain the failing tests"
+evocode "find and explain the failing tests"
 ```
 
 When the model requests Bash, review the exact command before approving it:
@@ -102,7 +102,7 @@ Only `y` or `yes`, ignoring case, approves a command. Any other response denies 
 
 `exit`, `quit`, and `/quit` also exit. Empty input is ignored.
 
-Without a path, `/save` and `/load` use `.rust-terminal-agent-session.json` in the working directory. Session files:
+Without a path, `/save` and `/load` use `.evocode-session.json` in the working directory. Session files:
 
 - do not store the configured API key automatically;
 - omit the system prompt and regenerate it for the current directory when loaded;

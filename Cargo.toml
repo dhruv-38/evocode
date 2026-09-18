@@ -1,8 +1,8 @@
 [package]
-name = "rust-terminal-agent"
+name = "evocode"
 version = "0.1.0"
 edition = "2024"
-description = "An interactive AI terminal agent powered by Groq"
+description = "Evocode, an interactive AI terminal agent powered by Groq"
 readme = "README.md"
 
 [dependencies]

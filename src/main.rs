@@ -56,7 +56,7 @@ async fn run_app() -> ExitCode {
     let mut pending_input =
         (!command_line_prompt.trim().is_empty()).then(|| classify_input(&command_line_prompt));
 
-    println!("Terminal agent ready. Type /exit to quit.");
+    println!("Evocode ready. Type /exit to quit.");
 
     loop {
         let input = match pending_input.take() {

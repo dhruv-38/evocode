@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::message::Message;
 
-pub(crate) const DEFAULT_SESSION_FILE: &str = ".rust-terminal-agent-session.json";
+pub(crate) const DEFAULT_SESSION_FILE: &str = ".evocode-session.json";
 const SESSION_VERSION: u32 = 1;
 const MAX_SESSION_BYTES: u64 = 10 * 1024 * 1024;
 
@@ -85,10 +85,8 @@ mod tests {
     impl TestDirectory {
         fn new() -> Self {
             let id = TEST_DIRECTORY_ID.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "rust-terminal-agent-session-test-{}-{id}",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir()
+                .join(format!("evocode-session-test-{}-{id}", std::process::id()));
             fs::create_dir(&path).expect("test directory should be created");
             Self(path)
         }
