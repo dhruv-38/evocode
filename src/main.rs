@@ -20,6 +20,19 @@ use tool::default_tools;
 
 #[tokio::main]
 async fn main() {
+    tokio::select! {
+        () = run_app() => {}
+        signal = tokio::signal::ctrl_c() => {
+            match signal {
+                Ok(()) => eprintln!("\nInterrupted."),
+                Err(error) => eprintln!("\nCould not listen for Ctrl+C: {error}"),
+            }
+            std::process::exit(130);
+        }
+    }
+}
+
+async fn run_app() {
     let config = match Config::from_env() {
         Ok(config) => config,
         Err(error) => {
@@ -48,7 +61,7 @@ async fn main() {
     loop {
         let input = match pending_input.take() {
             Some(input) => input,
-            None => match read_input() {
+            None => match read_input().await {
                 Ok(input) => input,
                 Err(error) => {
                     println!("Error: {error}");
@@ -120,8 +133,8 @@ async fn main() {
         )
         .await
         {
-            Ok(response) => println!("Response: {response}"),
-            Err(error) => println!("Error: {error}"),
+            Ok(response) => println!("\nAssistant:\n{response}\n"),
+            Err(error) => eprintln!("Error: {error}"),
         }
     }
 }

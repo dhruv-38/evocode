@@ -49,15 +49,18 @@ impl InteractiveBashExecutor {
 
 impl BashExecutor for InteractiveBashExecutor {
     async fn execute(&self, call: &BashCall) -> Message {
-        println!("{}: {}", call.tool_call_id, call.command);
+        println!("\nBash requested:\n$ {}", call.command);
 
-        match request_approval() {
+        match request_approval().await {
             Ok(true) => match execute_bash(call, &self.working_directory, self.timeout_duration)
                 .await
             {
                 Ok(output) => {
-                    println!("Tool result for {}", output.tool_call_id);
-                    println!("Exit code: {:?}", output.exit_code);
+                    let exit_code = output.exit_code.map_or_else(
+                        || String::from("terminated by signal"),
+                        |code| code.to_string(),
+                    );
+                    println!("\nBash result (exit {exit_code}):");
                     if !output.stdout.is_empty() {
                         println!("stdout:\n{}", output.stdout);
                     }
@@ -67,6 +70,7 @@ impl BashExecutor for InteractiveBashExecutor {
                     output.into_tool_result()
                 }
                 Err(error) => {
+                    eprintln!("Bash error: {error}");
                     Message::tool_result(call.tool_call_id.clone(), format!("Tool error: {error}"))
                 }
             },
@@ -77,10 +81,13 @@ impl BashExecutor for InteractiveBashExecutor {
                     String::from("Command denied by user"),
                 )
             }
-            Err(error) => Message::tool_result(
-                call.tool_call_id.clone(),
-                format!("Could not request command approval: {error}"),
-            ),
+            Err(error) => {
+                eprintln!("Approval error: {error}");
+                Message::tool_result(
+                    call.tool_call_id.clone(),
+                    format!("Could not request command approval: {error}"),
+                )
+            }
         }
     }
 }
@@ -130,7 +137,13 @@ pub(crate) fn parse_bash_call(tool_call: &ToolCall) -> Result<BashCall, String> 
     })
 }
 
-pub(crate) fn request_approval() -> Result<bool, String> {
+pub(crate) async fn request_approval() -> Result<bool, String> {
+    tokio::task::spawn_blocking(request_approval_blocking)
+        .await
+        .map_err(|error| format!("Approval task failed: {error}"))?
+}
+
+fn request_approval_blocking() -> Result<bool, String> {
     print!("Allow command? [y/N]: ");
     io::stdout()
         .flush()

@@ -24,7 +24,13 @@ pub(crate) enum ReplInput {
     Exit,
 }
 
-pub(crate) fn read_input() -> Result<ReplInput, String> {
+pub(crate) async fn read_input() -> Result<ReplInput, String> {
+    tokio::task::spawn_blocking(read_input_blocking)
+        .await
+        .map_err(|error| format!("Prompt task failed: {error}"))?
+}
+
+fn read_input_blocking() -> Result<ReplInput, String> {
     print!("> ");
     io::stdout()
         .flush()
