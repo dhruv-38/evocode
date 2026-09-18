@@ -1,1 +1,3 @@
 /target
+.env
+.rust-terminal-agent-session.json
