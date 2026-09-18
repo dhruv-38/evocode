@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, process::ExitCode};
 
 mod agent;
 mod bash;
@@ -19,9 +19,9 @@ use session::{DEFAULT_SESSION_FILE, load_session, save_session};
 use tool::default_tools;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     tokio::select! {
-        () = run_app() => {}
+        exit_code = run_app() => exit_code,
         signal = tokio::signal::ctrl_c() => {
             match signal {
                 Ok(()) => eprintln!("\nInterrupted."),
@@ -32,19 +32,19 @@ async fn main() {
     }
 }
 
-async fn run_app() {
+async fn run_app() -> ExitCode {
     let config = match Config::from_env() {
         Ok(config) => config,
         Err(error) => {
-            println!("Error: {error}");
-            return;
+            eprintln!("Error: {error}");
+            return ExitCode::FAILURE;
         }
     };
     let working_directory = match env::current_dir() {
         Ok(path) => path,
         Err(error) => {
-            println!("Error: Could not determine working directory: {error}");
-            return;
+            eprintln!("Error: Could not determine working directory: {error}");
+            return ExitCode::FAILURE;
         }
     };
 
@@ -64,8 +64,8 @@ async fn run_app() {
             None => match read_input().await {
                 Ok(input) => input,
                 Err(error) => {
-                    println!("Error: {error}");
-                    break;
+                    eprintln!("Error: {error}");
+                    return ExitCode::FAILURE;
                 }
             },
         };
@@ -137,4 +137,6 @@ async fn run_app() {
             Err(error) => eprintln!("Error: {error}"),
         }
     }
+
+    ExitCode::SUCCESS
 }
